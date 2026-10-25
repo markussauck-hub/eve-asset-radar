@@ -723,6 +723,7 @@
         <a class="btn-ghost" id="to-home" href="https://lincolnsoft.de/" title="Zurück zur Lincolnsoft Homestation"><span class="arrow">⌂</span>BACK TO HOMESTATION</a>
         <a class="btn-ghost" id="to-pc" href="https://markussauck-hub.github.io/eve-price-checker/" title="Zum EVE Price Checker"><span class="arrow">⇄</span>PRICE CHECKER</a>
         <a class="btn-ghost" id="to-ih" href="https://markussauck-hub.github.io/eve-invention-helper/" title="Zum EVE Invention Helper"><span class="arrow">⇄</span>INVENTION HELPER</a>
+        <a class="btn-ghost" id="to-radar" href="https://markussauck-hub.github.io/eve-asset-radar/" title="Zum EVE Asset Radar – dein Inventar nach Preistrend"><span class="arrow">⇄</span>ASSET RADAR</a>
       </nav>
     </div>
     <div class="brand hright">
@@ -1512,7 +1513,7 @@ async function scan(force = false) {
     const prices = new Map((await (await esiGet(`${ESI}/markets/prices/?datasource=tranquility`)).json()).map((p) => [p.type_id, p.average_price ?? p.adjusted_price ?? 0]));
     const typeVal = new Map();
     for (const g of groups.values()) typeVal.set(g.type, (typeVal.get(g.type) || 0) + g.qty * (prices.get(g.type) || 0));
-    const cand = [...typeVal.entries()].filter(([, v]) => v >= minVal && v > 0).sort((a, b) => b[1] - a[1]);
+    const cand = [...typeVal.entries()].filter(([, v]) => v >= minVal && (v > 0 || minVal === 0))   // bei „alle“ auch Items ohne ESI-Durchschnittspreis.sort((a, b) => b[1] - a[1]);
     const skipped = Math.max(0, cand.length - MAX_TYPES);
     const types = cand.slice(0, MAX_TYPES).map(([t]) => t);
     const typeSet = new Set(types);
