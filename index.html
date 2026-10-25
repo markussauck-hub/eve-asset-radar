@@ -638,6 +638,7 @@
   .sum .card { padding: 8px 12px; }
   .sum .k { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
   .sum .v { display: block; text-align: left; margin-top: 2px; font-size: 17px; }
+  .sum .v .tot { display: block; font: 500 11px var(--mono); color: var(--muted); margin-top: 2px; text-shadow: none; }
 
   .tbl-scroll { overflow-x: auto; margin-top: 4px; }
   #rt th { cursor: pointer; user-select: none; }
@@ -723,6 +724,7 @@
         <a class="btn-ghost" id="to-home" href="https://lincolnsoft.de/" title="Zurück zur Lincolnsoft Homestation"><span class="arrow">⌂</span>BACK TO HOMESTATION</a>
         <a class="btn-ghost" id="to-pc" href="https://markussauck-hub.github.io/eve-price-checker/" title="Zum EVE Price Checker"><span class="arrow">⇄</span>PRICE CHECKER</a>
         <a class="btn-ghost" id="to-ih" href="https://markussauck-hub.github.io/eve-invention-helper/" title="Zum EVE Invention Helper"><span class="arrow">⇄</span>INVENTION HELPER</a>
+        <a class="btn-ghost" id="to-radar" href="https://markussauck-hub.github.io/eve-asset-radar/" title="Zum EVE Asset Radar – dein Inventar nach Preistrend"><span class="arrow">⇄</span>ASSET RADAR</a>
       </nav>
     </div>
     <div class="brand hright">
@@ -779,7 +781,7 @@
       </div>
 
       <div class="sum">
-        <div class="card"><span class="k">Positionen geprüft</span><span class="v" id="s-n">–</span></div>
+        <div class="card"><span class="k" id="s-n-k">Positionen geprüft</span><span class="v" id="s-n">–</span></div>
         <div class="card"><span class="k">Wert (Jita Ø)</span><span class="v" id="s-val">–</span></div>
         <div class="card"><span class="k">Wertänderung ggü. Vorwochen</span><span class="v" id="s-gain">–</span></div>
         <div class="card"><span class="k">Stärkster Anstieg</span><span class="v name" id="s-top">–</span></div>
@@ -1617,12 +1619,16 @@ function render() {
   $("more-btn")?.addEventListener("click", () => { shown += PAGE; render(); });
   ensureHubs(rows.slice(0, shown).map((r) => r.type));
 
-  const all = SCAN.rows.filter((r) => r.value != null);
-  const sumV = all.reduce((a, r) => a + r.value, 0), sumG = all.reduce((a, r) => a + (r.gain || 0), 0);
-  const top = SCAN.rows.filter((r) => r.chg != null && r.value >= minVal).sort((a, b) => b.chg - a.chg)[0];
-  $("s-n").textContent = fmt(SCAN.rows.length);
-  $("s-val").textContent = `${fmtShort(sumV)} ISK`;
-  $("s-gain").innerHTML = `<span class="${cls(sumG)}">${sumG >= 0 ? "+" : "−"}${fmtShort(Math.abs(sumG))} ISK</span>`;
+  // Kacheln rechnen mit dem, was die Tabelle zeigt (Suche, Mindestwert, „nur Anstiege“); bei aktivem Filter mit Gesamtwert
+  const sums = (rs) => rs.reduce((a, r) => ({ v: a.v + (r.value ?? 0), g: a.g + (r.gain ?? 0) }), { v: 0, g: 0 });
+  const cur = sums(rows), tot = sums(SCAN.rows), filtered = rows.length !== SCAN.rows.length;
+  const signed = (n) => `${n >= 0 ? "+" : "−"}${fmtShort(Math.abs(n))} ISK`;
+  const of = (txt) => filtered ? `<span class="tot">von ${txt} gesamt</span>` : "";
+  const top = rows.filter((r) => r.chg != null).sort((a, b) => b.chg - a.chg)[0];
+  $("s-n-k").textContent = filtered ? "Positionen angezeigt" : "Positionen geprüft";
+  $("s-n").innerHTML = fmt(rows.length) + of(fmt(SCAN.rows.length));
+  $("s-val").innerHTML = `${fmtShort(cur.v)} ISK` + of(`${fmtShort(tot.v)} ISK`);
+  $("s-gain").innerHTML = `<span class="${cls(cur.g)}">${signed(cur.g)}</span>` + of(signed(tot.g));
   $("s-top").innerHTML = top ? `<span class="${cls(top.chg)}">${fmtPct(top.chg)}</span> ${esc(top.name)}` : "–";
   $("s-top").title = top ? `${top.name} · ${top.loc}` : "";
 }

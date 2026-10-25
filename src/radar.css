@@ -22,6 +22,7 @@
   .sum .card { padding: 8px 12px; }
   .sum .k { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
   .sum .v { display: block; text-align: left; margin-top: 2px; font-size: 17px; }
+  .sum .v .tot { display: block; font: 500 11px var(--mono); color: var(--muted); margin-top: 2px; text-shadow: none; }
 
   .tbl-scroll { overflow-x: auto; margin-top: 4px; }
   #rt th { cursor: pointer; user-select: none; }

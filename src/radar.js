@@ -313,12 +313,16 @@ function render() {
   $("more-btn")?.addEventListener("click", () => { shown += PAGE; render(); });
   ensureHubs(rows.slice(0, shown).map((r) => r.type));
 
-  const all = SCAN.rows.filter((r) => r.value != null);
-  const sumV = all.reduce((a, r) => a + r.value, 0), sumG = all.reduce((a, r) => a + (r.gain || 0), 0);
-  const top = SCAN.rows.filter((r) => r.chg != null && r.value >= minVal).sort((a, b) => b.chg - a.chg)[0];
-  $("s-n").textContent = fmt(SCAN.rows.length);
-  $("s-val").textContent = `${fmtShort(sumV)} ISK`;
-  $("s-gain").innerHTML = `<span class="${cls(sumG)}">${sumG >= 0 ? "+" : "−"}${fmtShort(Math.abs(sumG))} ISK</span>`;
+  // Kacheln rechnen mit dem, was die Tabelle zeigt (Suche, Mindestwert, „nur Anstiege“); bei aktivem Filter mit Gesamtwert
+  const sums = (rs) => rs.reduce((a, r) => ({ v: a.v + (r.value ?? 0), g: a.g + (r.gain ?? 0) }), { v: 0, g: 0 });
+  const cur = sums(rows), tot = sums(SCAN.rows), filtered = rows.length !== SCAN.rows.length;
+  const signed = (n) => `${n >= 0 ? "+" : "−"}${fmtShort(Math.abs(n))} ISK`;
+  const of = (txt) => filtered ? `<span class="tot">von ${txt} gesamt</span>` : "";
+  const top = rows.filter((r) => r.chg != null).sort((a, b) => b.chg - a.chg)[0];
+  $("s-n-k").textContent = filtered ? "Positionen angezeigt" : "Positionen geprüft";
+  $("s-n").innerHTML = fmt(rows.length) + of(fmt(SCAN.rows.length));
+  $("s-val").innerHTML = `${fmtShort(cur.v)} ISK` + of(`${fmtShort(tot.v)} ISK`);
+  $("s-gain").innerHTML = `<span class="${cls(cur.g)}">${signed(cur.g)}</span>` + of(signed(tot.g));
   $("s-top").innerHTML = top ? `<span class="${cls(top.chg)}">${fmtPct(top.chg)}</span> ${esc(top.name)}` : "–";
   $("s-top").title = top ? `${top.name} · ${top.loc}` : "";
 }
