@@ -1,0 +1,73 @@
+  <main class="radar">
+    <section class="card gate" id="gate" hidden>
+      <h2 id="gate-title">Was liegt bei dir herum – und ist gerade mehr wert?</h2>
+      <p>Das Asset Radar liest das Inventar deines Charakters auf allen Stationen und Strukturen und vergleicht für jedes Item den aktuellen Jita-Preis mit dem der Vorwochen.</p>
+      <ul>
+        <li>Benötigte Berechtigungen bei CCP: <code>esi-assets.read_assets.v1</code> (Inventar lesen), <code>esi-universe.read_structures.v1</code> (Namen von Spieler-Strukturen) und wie bisher <code>esi-skills.read_skills.v1</code>.</li>
+        <li><b>Nur lesen.</b> Nichts kann verschoben, verkauft oder verändert werden – die EVE-API bietet dafür gar keine Schreibrechte.</li>
+        <li>Alles läuft <b>in deinem Browser</b>. Token und Inventar werden an niemanden übertragen, auch nicht an den Betreiber.</li>
+      </ul>
+      <div class="actions">
+        <button class="btn-ghost" id="gate-login" type="button">MIT EVE ANMELDEN &amp; INVENTAR FREIGEBEN</button>
+        <span class="small" id="gate-note"></span>
+      </div>
+    </section>
+
+    <section id="view" hidden>
+      <div class="card">
+        <div class="ctrl">
+          <input id="q" type="search" placeholder="Item oder Station filtern …" autocomplete="off" spellcheck="false">
+          <label class="k" for="minval" title="Items, deren Gesamtwert (alle Stationen) darunter liegt, werden nicht geprüft">Mindestwert</label>
+          <select id="minval">
+            <option value="0">alle</option><option value="1e6">1 Mio ISK</option><option value="1e7" selected>10 Mio ISK</option>
+            <option value="5e7">50 Mio ISK</option><option value="1e8">100 Mio ISK</option><option value="1e9">1 Mrd ISK</option>
+          </select>
+          <label class="chk"><input type="checkbox" id="onlyup"> nur Anstiege ab <input id="upmin" type="number" min="0" max="1000" step="1" value="10" style="width:64px;padding:4px 6px"> %</label>
+          <select id="sortsel" aria-label="Sortierung">
+            <option value="chg:-1">Trend ▼</option><option value="chg:1">Trend ▲</option><option value="gain:-1">Zuwachs ▼</option>
+            <option value="value:-1">Wert ▼</option><option value="name:1">Item A–Z</option><option value="loc:1">Ort A–Z</option>
+            <option value="qty:-1">Menge ▼</option><option value="price:-1">Preis ▼</option><option value="gain:1">Zuwachs ▲</option>
+            <option value="value:1">Wert ▲</option><option value="name:-1">Item Z–A</option><option value="loc:-1">Ort Z–A</option>
+            <option value="qty:1">Menge ▲</option><option value="price:1">Preis ▲</option>
+          </select>
+          <span class="grow"></span>
+          <button class="btn-ghost" id="rescan" type="button">NEU SCANNEN</button>
+        </div>
+        <div class="progress" id="prog" hidden><i></i></div>
+      </div>
+
+      <div class="sum">
+        <div class="card"><span class="k">Positionen geprüft</span><span class="v" id="s-n">–</span></div>
+        <div class="card"><span class="k">Wert (Jita Ø)</span><span class="v" id="s-val">–</span></div>
+        <div class="card"><span class="k">Wertänderung ggü. Vorwochen</span><span class="v" id="s-gain">–</span></div>
+        <div class="card"><span class="k">Stärkster Anstieg</span><span class="v name" id="s-top">–</span></div>
+      </div>
+
+      <div class="card" style="margin-top:10px">
+        <h3>Inventar nach Preistrend</h3>
+        <div class="small" style="margin-bottom:6px">Preis = Jita-Tagesdurchschnitt (The Forge) der letzten 2 Handelstage · Vergleich = Ø der Tage 8–30 davor · Klick auf ein Item öffnet die Hub-Preise im Price Checker</div>
+        <div class="tbl-scroll">
+          <table id="rt">
+            <thead><tr>
+              <th data-k="name">Item</th>
+              <th data-k="loc" class="loc">Ort</th>
+              <th data-k="qty">Menge</th>
+              <th data-k="price" class="hide-s">Preis</th>
+              <th data-k="value">Wert</th>
+              <th data-k="chg">Trend</th>
+              <th data-k="gain" class="hide-s">Zuwachs</th>
+              <th class="nosort hide-s">30 Tage</th>
+            </tr></thead>
+            <tbody id="rows"></tbody>
+          </table>
+        </div>
+        <div class="more" id="more"></div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <span class="dot" id="dot">●</span>
+    <span id="status">Lade …</span>
+    <span class="credit">Daten: <a href="https://esi.evetech.net/" target="_blank" rel="noopener">EVE ESI</a> · Inventar ca. stündlich aktualisiert (CCP-Cache) · Preise: Market History The Forge · EVE Online © CCP hf.</span>
+  </footer>

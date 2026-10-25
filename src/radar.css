@@ -1,0 +1,66 @@
+
+  /* ================================================================
+     ASSET RADAR
+     ================================================================ */
+  main.radar { display: block; }
+  .radar .cards { grid-template-columns: 1fr; }
+  .gate { max-width: 760px; margin: 18px auto 0; padding: 22px 26px; }
+  .gate h2 { margin: 0 0 6px; font-size: 18px; letter-spacing: .04em; }
+  .gate p { color: var(--muted); margin: 6px 0; }
+  .gate ul { margin: 10px 0 14px; padding-left: 18px; color: var(--text); }
+  .gate li { margin: 4px 0; }
+  .gate code { font: 500 12px var(--mono); color: var(--accent-hi); }
+  .gate .btn-ghost { padding: 11px 22px; font-size: 12px; }
+  .gate .actions { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-top: 8px; }
+
+  .ctrl { display: flex; align-items: center; gap: 10px 14px; flex-wrap: wrap; }
+  .ctrl .grow { flex: 1; }
+  .ctrl input[type=search] { width: 240px; max-width: 100%; }
+  .ctrl label.chk { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); cursor: pointer; }
+  .ctrl label.chk input { accent-color: var(--accent); }
+  .sum { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 10px; }
+  .sum .card { padding: 8px 12px; }
+  .sum .k { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+  .sum .v { display: block; text-align: left; margin-top: 2px; font-size: 17px; }
+
+  .tbl-scroll { overflow-x: auto; margin-top: 4px; }
+  #rt th { cursor: pointer; user-select: none; }
+  #rt th.nosort { cursor: default; }
+  #rt th[aria-sort] { color: var(--accent); }
+  #rt th[aria-sort="descending"]::after { content: " ▼"; }
+  #rt th[aria-sort="ascending"]::after { content: " ▲"; }
+  #rt td { border-top: 1px solid rgba(255,255,255,.05); padding-top: 5px; padding-bottom: 5px; font: 500 13px var(--mono); }
+  #rt td.it { font: 600 13px var(--ui); }
+  #rt td.it a { color: var(--text); text-decoration: none; display: inline-flex; align-items: center; gap: 8px; }
+  #rt td.it a:hover { color: var(--accent); }
+  #rt td.it img { width: 28px; height: 28px; border-radius: 4px; background: rgba(8,10,14,.5); flex: none; }
+  #rt td.loc { font: 400 12px var(--ui); color: var(--muted); text-align: left; white-space: normal; min-width: 180px; max-width: 320px; }
+  #rt th.loc { text-align: left; }
+  #rt td.loc .via { display: block; font-size: 11px; opacity: .75; }
+  #rt td.chg { font-weight: 700; }
+  #rt tr:hover td { background: rgba(127,207,255,.04); }
+  .spark { width: 90px; height: 24px; display: block; margin-left: auto; }
+  .tag { display: inline-block; font: 700 9px var(--ui); letter-spacing: .05em; padding: 1px 5px; border: 1px solid var(--border); color: var(--muted); margin-left: 6px; vertical-align: middle; }
+  .progress { height: 3px; background: rgba(255,255,255,.06); margin-top: 8px; overflow: hidden; }
+  .progress i { display: block; height: 100%; width: 0; background: var(--accent); box-shadow: 0 0 8px rgba(127,207,255,.6); transition: width .2s; }
+  .more { text-align: center; margin-top: 10px; }
+
+  @media (max-width: 980px) { .sum { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  #sortsel { display: none; }
+  #rt .unit { display: none; }
+  @media (max-width: 640px) {
+    #sortsel { display: block; }
+    .gate { padding: 16px; }
+    /* Tabelle als Karten-Liste */
+    #rt thead, #rt .hide-s { display: none; }
+    #rt, #rt tbody { display: block; }
+    #rt tr { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 10px; row-gap: 2px; padding: 8px 0; border-top: 1px solid rgba(255,255,255,.06); }
+    #rt td { border: 0; padding: 0; text-align: left; white-space: normal; }
+    #rt td.it { grid-column: 1; grid-row: 1; }
+    #rt td.chg { grid-column: 2; grid-row: 1; text-align: right; font-size: 15px; }
+    #rt td.loc { grid-column: 1 / -1; grid-row: 2; min-width: 0; max-width: none; padding-left: 36px; }
+    #rt td.qty { grid-column: 1; grid-row: 3; padding-left: 36px; color: var(--muted); }
+    #rt td.val { grid-column: 2; grid-row: 3; text-align: right; }
+    #rt .unit { display: inline; }
+    #rt td[colspan] { grid-column: 1 / -1; }
+  }
