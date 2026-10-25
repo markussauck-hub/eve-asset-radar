@@ -655,6 +655,12 @@
   #rt td.loc .via { display: block; font-size: 11px; opacity: .75; }
   #rt td.chg { font-weight: 700; }
   #rt tr:hover td { background: rgba(127,207,255,.04); }
+  /* Spalte, nach der sortiert ist: durchgehend hinterlegt */
+  #rt th[aria-sort], #rt td.sorted { background: rgba(127,207,255,.08); }
+  #rt th[aria-sort] { box-shadow: inset 0 2px 0 var(--accent); padding-right: 8px; }
+  #rt td.sorted { padding-right: 8px; }
+  #rt tr:hover td.sorted { background: rgba(127,207,255,.13); }
+  #rt td.it.sorted, #rt td.loc.sorted, #rt th.loc[aria-sort], #rt th[data-k="name"][aria-sort] { padding-left: 8px; }
   .spark { width: 90px; height: 24px; display: block; margin-left: auto; }
   .tag { display: inline-block; font: 700 9px var(--ui); letter-spacing: .05em; padding: 1px 5px; border: 1px solid var(--border); color: var(--muted); margin-left: 6px; vertical-align: middle; }
   .progress { height: 3px; background: rgba(255,255,255,.06); margin-top: 8px; overflow: hidden; }
@@ -672,6 +678,11 @@
     #rt, #rt tbody { display: block; }
     #rt tr { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 10px; row-gap: 2px; padding: 8px 0; border-top: 1px solid rgba(255,255,255,.06); }
     #rt td { border: 0; padding: 0; text-align: left; white-space: normal; }
+    #rt td.sorted { background: none; padding: 0; }
+    #rt td.loc.sorted, #rt td.qty.sorted { padding-left: 36px; }
+    #rt td.sorted:not(.loc) { color: var(--accent); }
+    #rt td.sorted.pos { color: var(--pos); text-shadow: 0 0 8px currentColor; }
+    #rt td.sorted.neg { color: var(--neg); text-shadow: 0 0 8px currentColor; }
     #rt td.it { grid-column: 1; grid-row: 1; }
     #rt td.chg { grid-column: 2; grid-row: 1; text-align: right; font-size: 15px; }
     #rt td.loc { grid-column: 1 / -1; grid-row: 2; min-width: 0; max-width: none; padding-left: 36px; }
@@ -1502,15 +1513,16 @@ function render() {
   });
 
   const cls = (v) => v == null ? "dim" : v >= 0 ? "pos" : "neg";
+  const sc = (k) => k === sortKey ? " sorted" : "";      // Sortierspalte hervorheben
   $("rows").innerHTML = rows.slice(0, shown).map((r) => `
     <tr>
-      <td class="it"><a href="${PC_URL}#${r.type}" title="Hub-Preise im Price Checker"><img src="https://images.evetech.net/types/${r.type}/icon?size=32" alt="" loading="lazy" onerror="this.style.visibility='hidden'">${esc(r.name)}</a>${r.assembled ? `<span class="tag" title="zusammengebaut – vor dem Verkauf umpacken">ASSEMBLED</span>` : ""}</td>
-      <td class="loc">${esc(r.loc)}${r.via.length ? `<span class="via">in ${esc(r.via.join(", "))}</span>` : ""}</td>
-      <td class="qty">${fmt(r.qty)}<span class="unit"> Stk</span></td>
-      <td class="hide-s">${fmtPrice(r.price)}</td>
-      <td class="val">${r.value == null ? "–" : `${fmtShort(r.value)} ISK`}</td>
-      <td class="chg ${cls(r.chg)}">${r.error ? `<span class="dim" title="${esc(r.error)}">Fehler</span>` : r.price == null ? `<span class="v dim" title="in den letzten Tagen nicht in The Forge gehandelt">kein Handel</span>` : fmtPct(r.chg)}</td>
-      <td class="hide-s ${cls(r.gain)}">${r.gain == null ? "–" : `${r.gain >= 0 ? "+" : "−"}${fmtShort(Math.abs(r.gain))} ISK`}</td>
+      <td class="it${sc("name")}"><a href="${PC_URL}#${r.type}" title="Hub-Preise im Price Checker"><img src="https://images.evetech.net/types/${r.type}/icon?size=32" alt="" loading="lazy" onerror="this.style.visibility='hidden'">${esc(r.name)}</a>${r.assembled ? `<span class="tag" title="zusammengebaut – vor dem Verkauf umpacken">ASSEMBLED</span>` : ""}</td>
+      <td class="loc${sc("loc")}">${esc(r.loc)}${r.via.length ? `<span class="via">in ${esc(r.via.join(", "))}</span>` : ""}</td>
+      <td class="qty${sc("qty")}">${fmt(r.qty)}<span class="unit"> Stk</span></td>
+      <td class="hide-s${sc("price")}">${fmtPrice(r.price)}</td>
+      <td class="val${sc("value")}">${r.value == null ? "–" : `${fmtShort(r.value)} ISK`}</td>
+      <td class="chg ${cls(r.chg)}${sc("chg")}">${r.error ? `<span class="dim" title="${esc(r.error)}">Fehler</span>` : r.price == null ? `<span class="v dim" title="in den letzten Tagen nicht in The Forge gehandelt">kein Handel</span>` : fmtPct(r.chg)}</td>
+      <td class="hide-s ${cls(r.gain)}${sc("gain")}">${r.gain == null ? "–" : `${r.gain >= 0 ? "+" : "−"}${fmtShort(Math.abs(r.gain))} ISK`}</td>
       <td class="hide-s">${spark(r.spark, r.chg)}</td>
     </tr>`).join("") || `<tr><td colspan="8" class="dim" style="text-align:center;padding:18px">Keine Treffer${onlyUp ? " – Filter „nur Anstiege“ lockern?" : ""}</td></tr>`;
   $("more").innerHTML = rows.length > shown ? `<button class="btn-ghost" id="more-btn" type="button">${fmt(rows.length - shown)} WEITERE ANZEIGEN</button>` : "";
