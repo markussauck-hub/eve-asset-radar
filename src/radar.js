@@ -186,6 +186,7 @@ async function scan(force = false) {
         type: g.type, name: nameCache.get(g.type) || `#${g.type}`, loc: locName,
         via: [...g.via].map((t) => nameCache.get(t) || `#${t}`), assembled: g.assembled, qty: g.qty,
         price, value: price != null ? price * g.qty : null, chg: m.chg ?? null,
+        est: g.qty * (prices.get(g.type) || 0),           // Grobwert (ESI-Durchschnitt), falls kein Jita-Preis
         gain: price != null && m.base ? (price - m.base) * g.qty : null, spark: m.spark || [], error: m.error,
       };
     });
@@ -212,7 +213,11 @@ function render() {
   if (!SCAN?.rows) return;
   const q = $("q").value.trim().toLowerCase();
   const onlyUp = $("onlyup").checked, upMin = Number($("upmin").value) / 100;
-  let rows = SCAN.rows.filter((r) => (!q || r.name.toLowerCase().includes(q) || r.loc.toLowerCase().includes(q))
+  // Mindestwert gilt auch je Zeile: Kleinstapel einer wertvollen Sorte (z. B. 24 Stück Erz) werden ausgeblendet
+  const minVal = Number($("minval").value);
+  const big = (r) => (r.value ?? r.est) >= minVal;
+  const small = SCAN.rows.filter((r) => !big(r)).length;
+  let rows = SCAN.rows.filter((r) => big(r) && (!q || r.name.toLowerCase().includes(q) || r.loc.toLowerCase().includes(q))
     && (!onlyUp || (r.chg != null && r.chg >= upMin)));
   const val = (r) => sortKey === "name" || sortKey === "loc" ? r[sortKey].toLowerCase() : r[sortKey];
   rows.sort((a, b) => {
@@ -230,23 +235,25 @@ function render() {
   });
 
   const cls = (v) => v == null ? "dim" : v >= 0 ? "pos" : "neg";
+  const sc = (k) => k === sortKey ? " sorted" : "";      // Sortierspalte hervorheben
   $("rows").innerHTML = rows.slice(0, shown).map((r) => `
     <tr>
-      <td class="it"><a href="${PC_URL}#${r.type}" title="Hub-Preise im Price Checker"><img src="https://images.evetech.net/types/${r.type}/icon?size=32" alt="" loading="lazy" onerror="this.style.visibility='hidden'">${esc(r.name)}</a>${r.assembled ? `<span class="tag" title="zusammengebaut – vor dem Verkauf umpacken">ASSEMBLED</span>` : ""}</td>
-      <td class="loc">${esc(r.loc)}${r.via.length ? `<span class="via">in ${esc(r.via.join(", "))}</span>` : ""}</td>
-      <td class="qty">${fmt(r.qty)}<span class="unit"> Stk</span></td>
-      <td class="hide-s">${fmtPrice(r.price)}</td>
-      <td class="val">${r.value == null ? "–" : `${fmtShort(r.value)} ISK`}</td>
-      <td class="chg ${cls(r.chg)}">${r.error ? `<span class="dim" title="${esc(r.error)}">Fehler</span>` : r.price == null ? `<span class="v dim" title="in den letzten Tagen nicht in The Forge gehandelt">kein Handel</span>` : fmtPct(r.chg)}</td>
-      <td class="hide-s ${cls(r.gain)}">${r.gain == null ? "–" : `${r.gain >= 0 ? "+" : "−"}${fmtShort(Math.abs(r.gain))} ISK`}</td>
+      <td class="it${sc("name")}"><a href="${PC_URL}#${r.type}" title="Hub-Preise im Price Checker"><img src="https://images.evetech.net/types/${r.type}/icon?size=32" alt="" loading="lazy" onerror="this.style.visibility='hidden'">${esc(r.name)}</a>${r.assembled ? `<span class="tag" title="zusammengebaut – vor dem Verkauf umpacken">ASSEMBLED</span>` : ""}</td>
+      <td class="loc${sc("loc")}">${esc(r.loc)}${r.via.length ? `<span class="via">in ${esc(r.via.join(", "))}</span>` : ""}</td>
+      <td class="qty${sc("qty")}">${fmt(r.qty)}<span class="unit"> Stk</span></td>
+      <td class="hide-s${sc("price")}">${fmtPrice(r.price)}</td>
+      <td class="val${sc("value")}">${r.value == null ? "–" : `${fmtShort(r.value)} ISK`}</td>
+      <td class="chg ${cls(r.chg)}${sc("chg")}">${r.error ? `<span class="dim" title="${esc(r.error)}">Fehler</span>` : r.price == null ? `<span class="v dim" title="in den letzten Tagen nicht in The Forge gehandelt">kein Handel</span>` : fmtPct(r.chg)}</td>
+      <td class="hide-s ${cls(r.gain)}${sc("gain")}">${r.gain == null ? "–" : `${r.gain >= 0 ? "+" : "−"}${fmtShort(Math.abs(r.gain))} ISK`}</td>
       <td class="hide-s">${spark(r.spark, r.chg)}</td>
     </tr>`).join("") || `<tr><td colspan="8" class="dim" style="text-align:center;padding:18px">Keine Treffer${onlyUp ? " – Filter „nur Anstiege“ lockern?" : ""}</td></tr>`;
-  $("more").innerHTML = rows.length > shown ? `<button class="btn-ghost" id="more-btn" type="button">${fmt(rows.length - shown)} WEITERE ANZEIGEN</button>` : "";
+  $("more").innerHTML = (rows.length > shown ? `<button class="btn-ghost" id="more-btn" type="button">${fmt(rows.length - shown)} WEITERE ANZEIGEN</button>` : "")
+    + (small ? `<div class="small" style="margin-top:8px">${fmt(small)} Stapel unter dem Mindestwert von ${fmtShort(minVal)} ISK ausgeblendet</div>` : "");
   $("more-btn")?.addEventListener("click", () => { shown += PAGE; render(); });
 
   const all = SCAN.rows.filter((r) => r.value != null);
   const sumV = all.reduce((a, r) => a + r.value, 0), sumG = all.reduce((a, r) => a + (r.gain || 0), 0);
-  const top = SCAN.rows.filter((r) => r.chg != null && r.value >= Number($("minval").value)).sort((a, b) => b.chg - a.chg)[0];
+  const top = SCAN.rows.filter((r) => r.chg != null && r.value >= minVal).sort((a, b) => b.chg - a.chg)[0];
   $("s-n").textContent = fmt(SCAN.rows.length);
   $("s-val").textContent = `${fmtShort(sumV)} ISK`;
   $("s-gain").innerHTML = `<span class="${cls(sumG)}">${sumG >= 0 ? "+" : "−"}${fmtShort(Math.abs(sumG))} ISK</span>`;
