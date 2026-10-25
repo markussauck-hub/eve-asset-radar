@@ -10,6 +10,15 @@ const DAY = 86400000;
 
 let SCAN = null;                  // { char, at, positions: [...], types: Map }
 let scanToken = 0, sortKey = store.get("sort", "chg"), sortDir = store.get("dir", -1), shown = PAGE;
+const HUBS = [
+  { name: "Jita",    station: 60003760, region: 10000002 },
+  { name: "Amarr",   station: 60008494, region: 10000043 },
+  { name: "Dodixie", station: 60011866, region: 10000032 },
+  { name: "Rens",    station: 60004588, region: 10000030 },
+];
+const hubCache = new Map();       // typeId -> { t, hubs: [{ buy, sell }] | null } – 5 Minuten
+const hubPending = new Set();
+let hubTimer = 0;
 const histCache = new Map();      // typeId -> Metrik (1 h)
 const nameCache = new Map();      // id -> Name (Typen, Stationen, Systeme, Strukturen)
 
@@ -99,6 +108,55 @@ async function trend(typeId) {
   }
   histCache.set(typeId, { t: Date.now(), m });
   return m;
+}
+
+// Live-Preise an den 4 Handelszentren (nur Orders direkt an der Station, wie im Price Checker)
+async function hubPrices(typeId) {
+  if (typeId === 44992) return null;                        // PLEX: nur im globalen PLEX-Markt
+  return Promise.all(HUBS.map(async (h) => {
+    const url = (p) => `${ESI}/markets/${h.region}/orders/?datasource=tranquility&order_type=all&type_id=${typeId}&page=${p}`;
+    const first = await esiGet(url(1));
+    let orders = await first.json();
+    const pages = Number(first.headers.get("X-Pages")) || 1;
+    for (let p = 2; p <= pages; p++) orders = orders.concat(await (await esiGet(url(p))).json());
+    orders = orders.filter((o) => o.location_id === h.station);
+    const buys = orders.filter((o) => o.is_buy_order).map((o) => o.price), sells = orders.filter((o) => !o.is_buy_order).map((o) => o.price);
+    return { buy: buys.length ? Math.max(...buys) : null, sell: sells.length ? Math.min(...sells) : null };
+  }));
+}
+
+// fehlende Hub-Preise für die angezeigten Typen nachladen; Tabelle wird gebündelt neu gezeichnet
+function ensureHubs(types) {
+  const fresh = (t) => { const c = hubCache.get(t); return c && Date.now() - c.t < 5 * 60000; };
+  const todo = [...new Set(types)].filter((t) => !hubPending.has(t) && !fresh(t));
+  if (!todo.length) return;
+  todo.forEach((t) => hubPending.add(t));
+  pool(todo, 3, async (t) => {
+    try { hubCache.set(t, { t: Date.now(), hubs: await hubPrices(t) }); }
+    catch (e) { hubCache.set(t, { t: Date.now(), hubs: undefined, error: String(e.message || e) }); }
+    finally { hubPending.delete(t); }
+  }, () => { clearTimeout(hubTimer); hubTimer = setTimeout(render, 300); });
+}
+
+const fmtHub = (n) => n == null ? "–" : n >= 1e6 ? fmtShort(n) : n.toLocaleString("de-DE", { minimumFractionDigits: n < 100 ? 2 : 0, maximumFractionDigits: n < 100 ? 2 : 0 });
+
+function hubCell(r, i, sc) {
+  const c = hubCache.get(r.type);
+  if (!c) return `<td class="hub hide-s${sc}"><span class="dim">…</span></td>`;
+  if (c.hubs === null) return i === 0 ? `<td class="hub plex hide-s${sc}" colspan="4"><span class="dim">nur im globalen PLEX-Markt</span></td>` : "";
+  if (!c.hubs) return `<td class="hub hide-s${sc}"><span class="dim" title="${esc(c.error || "")}">Fehler</span></td>`;
+  const h = c.hubs[i], best = Math.max(...c.hubs.map((x) => x.buy ?? -1));
+  return `<td class="hub hide-s${sc}" title="${HUBS[i].name}: höchstes Buy (Sofortverkauf) ${fmtHub(h.buy)} ISK · niedrigstes Sell ${fmtHub(h.sell)} ISK">
+        <span class="hb${h.buy != null && h.buy === best && best > 0 ? " best" : ""}">${fmtHub(h.buy)}</span><span class="hs">${fmtHub(h.sell)}</span></td>`;
+}
+
+function hubMobile(r) {
+  const c = hubCache.get(r.type);
+  if (!c) return `<td class="hubs-m"><span class="dim">Hub-Preise laden …</span></td>`;
+  if (c.hubs === null) return `<td class="hubs-m"><span class="dim">Hubs: nur im globalen PLEX-Markt</span></td>`;
+  if (!c.hubs) return `<td class="hubs-m"><span class="dim">Hub-Preise: Fehler</span></td>`;
+  const best = Math.max(...c.hubs.map((x) => x.buy ?? -1));
+  return `<td class="hubs-m">${c.hubs.map((h, i) => `<span class="${h.buy != null && h.buy === best && best > 0 ? "best" : ""}"><i>${HUBS[i].name}</i>${fmtHub(h.buy)}</span>`).join("")}</td>`;
 }
 
 function spark(vals, chg) {
@@ -219,7 +277,8 @@ function render() {
   const small = SCAN.rows.filter((r) => !big(r)).length;
   let rows = SCAN.rows.filter((r) => big(r) && (!q || r.name.toLowerCase().includes(q) || r.loc.toLowerCase().includes(q))
     && (!onlyUp || (r.chg != null && r.chg >= upMin)));
-  const val = (r) => sortKey === "name" || sortKey === "loc" ? r[sortKey].toLowerCase() : r[sortKey];
+  const val = (r) => sortKey === "name" || sortKey === "loc" ? r[sortKey].toLowerCase()
+    : /^h\d$/.test(sortKey) ? hubCache.get(r.type)?.hubs?.[Number(sortKey[1])]?.buy ?? null : r[sortKey];
   rows.sort((a, b) => {
     const x = val(a), y = val(b);
     if (x == null && y == null) return 0;
@@ -242,14 +301,17 @@ function render() {
       <td class="loc${sc("loc")}">${esc(r.loc)}${r.via.length ? `<span class="via">in ${esc(r.via.join(", "))}</span>` : ""}</td>
       <td class="qty${sc("qty")}">${fmt(r.qty)}<span class="unit"> Stk</span></td>
       <td class="hide-s${sc("price")}">${fmtPrice(r.price)}</td>
+      ${HUBS.map((_, i) => hubCell(r, i, sc(`h${i}`))).join("")}
       <td class="val${sc("value")}">${r.value == null ? "–" : `${fmtShort(r.value)} ISK`}</td>
       <td class="chg ${cls(r.chg)}${sc("chg")}">${r.error ? `<span class="dim" title="${esc(r.error)}">Fehler</span>` : r.price == null ? `<span class="v dim" title="in den letzten Tagen nicht in The Forge gehandelt">kein Handel</span>` : fmtPct(r.chg)}</td>
       <td class="hide-s ${cls(r.gain)}${sc("gain")}">${r.gain == null ? "–" : `${r.gain >= 0 ? "+" : "−"}${fmtShort(Math.abs(r.gain))} ISK`}</td>
-      <td class="hide-s">${spark(r.spark, r.chg)}</td>
-    </tr>`).join("") || `<tr><td colspan="8" class="dim" style="text-align:center;padding:18px">Keine Treffer${onlyUp ? " – Filter „nur Anstiege“ lockern?" : ""}</td></tr>`;
+      <td class="hide-s spark-col">${spark(r.spark, r.chg)}</td>
+      ${hubMobile(r)}
+    </tr>`).join("") || `<tr><td colspan="12" class="dim" style="text-align:center;padding:18px">Keine Treffer${onlyUp ? " – Filter „nur Anstiege“ lockern?" : ""}</td></tr>`;
   $("more").innerHTML = (rows.length > shown ? `<button class="btn-ghost" id="more-btn" type="button">${fmt(rows.length - shown)} WEITERE ANZEIGEN</button>` : "")
     + (small ? `<div class="small" style="margin-top:8px">${fmt(small)} Stapel unter dem Mindestwert von ${fmtShort(minVal)} ISK ausgeblendet</div>` : "");
   $("more-btn")?.addEventListener("click", () => { shown += PAGE; render(); });
+  ensureHubs(rows.slice(0, shown).map((r) => r.type));
 
   const all = SCAN.rows.filter((r) => r.value != null);
   const sumV = all.reduce((a, r) => a + r.value, 0), sumG = all.reduce((a, r) => a + (r.gain || 0), 0);
@@ -277,7 +339,7 @@ function gate() {
 }
 
 $("gate-login").addEventListener("click", () => EveSSO.login());
-$("rescan").addEventListener("click", () => { histCache.clear(); scan(true); });
+$("rescan").addEventListener("click", () => { histCache.clear(); hubCache.clear(); scan(true); });
 $("minval").value = String(store.get("minval", "1e7"));
 $("minval").addEventListener("change", () => { store.set("minval", $("minval").value); scan(); });
 $("onlyup").checked = !!store.get("onlyup", false);
