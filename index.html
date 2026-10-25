@@ -1514,7 +1514,7 @@ async function scan(force = false) {
     const prices = new Map((await (await esiGet(`${ESI}/markets/prices/?datasource=tranquility`)).json()).map((p) => [p.type_id, p.average_price ?? p.adjusted_price ?? 0]));
     const typeVal = new Map();
     for (const g of groups.values()) typeVal.set(g.type, (typeVal.get(g.type) || 0) + g.qty * (prices.get(g.type) || 0));
-    const cand = [...typeVal.entries()].filter(([, v]) => v >= minVal && v > 0).sort((a, b) => b[1] - a[1]);
+    const cand = [...typeVal.entries()].filter(([, v]) => v >= minVal && (v > 0 || minVal === 0))   // bei „alle“ auch Items ohne ESI-Durchschnittspreis.sort((a, b) => b[1] - a[1]);
     const skipped = Math.max(0, cand.length - MAX_TYPES);
     const types = cand.slice(0, MAX_TYPES).map(([t]) => t);
     const typeSet = new Set(types);
