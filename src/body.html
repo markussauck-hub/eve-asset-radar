@@ -29,6 +29,7 @@
             <option value="qty:-1">Menge ▼</option><option value="price:-1">Preis ▼</option><option value="gain:1">Zuwachs ▲</option>
             <option value="value:1">Wert ▲</option><option value="name:-1">Item Z–A</option><option value="loc:-1">Ort Z–A</option>
             <option value="qty:1">Menge ▲</option><option value="price:1">Preis ▲</option>
+            <option value="h0:-1">Jita Buy ▼</option><option value="h1:-1">Amarr Buy ▼</option><option value="h2:-1">Dodixie Buy ▼</option><option value="h3:-1">Rens Buy ▼</option>
           </select>
           <span class="grow"></span>
           <button class="btn-ghost" id="rescan" type="button">NEU SCANNEN</button>
@@ -45,18 +46,22 @@
 
       <div class="card" style="margin-top:10px">
         <h3>Inventar nach Preistrend</h3>
-        <div class="small" style="margin-bottom:6px">Preis = Jita-Tagesdurchschnitt (The Forge) der letzten 2 Handelstage · Vergleich = Ø der Tage 8–30 davor · Klick auf ein Item öffnet die Hub-Preise im Price Checker</div>
+        <div class="small" style="margin-bottom:6px">Jita Ø = Tagesdurchschnitt (The Forge) der letzten 2 Handelstage · Trend = Vergleich mit Ø der Tage 8–30 davor · Hubs: oben höchstes Buy (Sofortverkauf, bestes hervorgehoben), darunter niedrigstes Sell, live · Klick auf ein Item öffnet die Hub-Preise im Price Checker</div>
         <div class="tbl-scroll">
           <table id="rt">
             <thead><tr>
               <th data-k="name">Item</th>
               <th data-k="loc" class="loc">Ort</th>
               <th data-k="qty">Menge</th>
-              <th data-k="price" class="hide-s">Preis</th>
+              <th data-k="price" class="hide-s" title="Jita-Tagesdurchschnitt (Basis für Wert und Trend)">Jita Ø</th>
+              <th data-k="h0" class="hide-s hubh" title="Jita 4-4: höchstes Buy (Sofortverkauf), darunter niedrigstes Sell">Jita</th>
+              <th data-k="h1" class="hide-s hubh" title="Amarr VIII: höchstes Buy (Sofortverkauf), darunter niedrigstes Sell">Amarr</th>
+              <th data-k="h2" class="hide-s hubh" title="Dodixie IX: höchstes Buy (Sofortverkauf), darunter niedrigstes Sell">Dodixie</th>
+              <th data-k="h3" class="hide-s hubh" title="Rens VI: höchstes Buy (Sofortverkauf), darunter niedrigstes Sell">Rens</th>
               <th data-k="value">Wert</th>
               <th data-k="chg">Trend</th>
               <th data-k="gain" class="hide-s">Zuwachs</th>
-              <th class="nosort hide-s">30 Tage</th>
+              <th class="nosort hide-s spark-col">30 Tage</th>
             </tr></thead>
             <tbody id="rows"></tbody>
           </table>

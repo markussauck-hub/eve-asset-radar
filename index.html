@@ -661,6 +661,16 @@
   #rt td.sorted { padding-right: 8px; }
   #rt tr:hover td.sorted { background: rgba(127,207,255,.13); }
   #rt td.it.sorted, #rt td.loc.sorted, #rt th.loc[aria-sort], #rt th[data-k="name"][aria-sort] { padding-left: 8px; }
+  #rt td.hub { line-height: 1.15; font-size: 12px; }
+  #rt td.it { white-space: nowrap; }
+  #rt td.plex { text-align: center; font: 400 11px var(--ui); }
+  @media (max-width: 1500px) { #rt .spark-col { display: none; } #rt td.loc { min-width: 150px; max-width: 230px; } }
+  #rt td.hub span { display: block; }
+  #rt td.hub .hb { font-weight: 600; }
+  #rt td.hub .hb.best { color: var(--accent); text-shadow: 0 0 8px rgba(127,207,255,.45); }
+  #rt td.hub .hs { font-size: 11px; color: var(--muted); }
+  #rt th.hubh { color: var(--accent-hi); }
+  #rt td.hubs-m { display: none; }
   .spark { width: 90px; height: 24px; display: block; margin-left: auto; }
   .tag { display: inline-block; font: 700 9px var(--ui); letter-spacing: .05em; padding: 1px 5px; border: 1px solid var(--border); color: var(--muted); margin-left: 6px; vertical-align: middle; }
   .progress { height: 3px; background: rgba(255,255,255,.06); margin-top: 8px; overflow: hidden; }
@@ -689,6 +699,12 @@
     #rt td.qty { grid-column: 1; grid-row: 3; padding-left: 36px; color: var(--muted); }
     #rt td.val { grid-column: 2; grid-row: 3; text-align: right; }
     #rt .unit { display: inline; }
+    #rt td.hubs-m { display: grid; grid-column: 1 / -1; grid-row: 4; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; padding: 4px 0 0 36px; font-size: 11px; }
+    #rt td.hubs-m > .dim { grid-column: 1 / -1; }
+    #rt td.it { white-space: normal; }
+    #rt td.hubs-m span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    #rt td.hubs-m i { display: block; font: 600 9px var(--ui); letter-spacing: .05em; text-transform: uppercase; color: var(--muted); font-style: normal; }
+    #rt td.hubs-m .best { color: var(--accent); }
     #rt td[colspan] { grid-column: 1 / -1; }
   }
 </style>
@@ -754,6 +770,7 @@
             <option value="qty:-1">Menge ▼</option><option value="price:-1">Preis ▼</option><option value="gain:1">Zuwachs ▲</option>
             <option value="value:1">Wert ▲</option><option value="name:-1">Item Z–A</option><option value="loc:-1">Ort Z–A</option>
             <option value="qty:1">Menge ▲</option><option value="price:1">Preis ▲</option>
+            <option value="h0:-1">Jita Buy ▼</option><option value="h1:-1">Amarr Buy ▼</option><option value="h2:-1">Dodixie Buy ▼</option><option value="h3:-1">Rens Buy ▼</option>
           </select>
           <span class="grow"></span>
           <button class="btn-ghost" id="rescan" type="button">NEU SCANNEN</button>
@@ -770,18 +787,22 @@
 
       <div class="card" style="margin-top:10px">
         <h3>Inventar nach Preistrend</h3>
-        <div class="small" style="margin-bottom:6px">Preis = Jita-Tagesdurchschnitt (The Forge) der letzten 2 Handelstage · Vergleich = Ø der Tage 8–30 davor · Klick auf ein Item öffnet die Hub-Preise im Price Checker</div>
+        <div class="small" style="margin-bottom:6px">Jita Ø = Tagesdurchschnitt (The Forge) der letzten 2 Handelstage · Trend = Vergleich mit Ø der Tage 8–30 davor · Hubs: oben höchstes Buy (Sofortverkauf, bestes hervorgehoben), darunter niedrigstes Sell, live · Klick auf ein Item öffnet die Hub-Preise im Price Checker</div>
         <div class="tbl-scroll">
           <table id="rt">
             <thead><tr>
               <th data-k="name">Item</th>
               <th data-k="loc" class="loc">Ort</th>
               <th data-k="qty">Menge</th>
-              <th data-k="price" class="hide-s">Preis</th>
+              <th data-k="price" class="hide-s" title="Jita-Tagesdurchschnitt (Basis für Wert und Trend)">Jita Ø</th>
+              <th data-k="h0" class="hide-s hubh" title="Jita 4-4: höchstes Buy (Sofortverkauf), darunter niedrigstes Sell">Jita</th>
+              <th data-k="h1" class="hide-s hubh" title="Amarr VIII: höchstes Buy (Sofortverkauf), darunter niedrigstes Sell">Amarr</th>
+              <th data-k="h2" class="hide-s hubh" title="Dodixie IX: höchstes Buy (Sofortverkauf), darunter niedrigstes Sell">Dodixie</th>
+              <th data-k="h3" class="hide-s hubh" title="Rens VI: höchstes Buy (Sofortverkauf), darunter niedrigstes Sell">Rens</th>
               <th data-k="value">Wert</th>
               <th data-k="chg">Trend</th>
               <th data-k="gain" class="hide-s">Zuwachs</th>
-              <th class="nosort hide-s">30 Tage</th>
+              <th class="nosort hide-s spark-col">30 Tage</th>
             </tr></thead>
             <tbody id="rows"></tbody>
           </table>
@@ -1293,6 +1314,15 @@ const DAY = 86400000;
 
 let SCAN = null;                  // { char, at, positions: [...], types: Map }
 let scanToken = 0, sortKey = store.get("sort", "chg"), sortDir = store.get("dir", -1), shown = PAGE;
+const HUBS = [
+  { name: "Jita",    station: 60003760, region: 10000002 },
+  { name: "Amarr",   station: 60008494, region: 10000043 },
+  { name: "Dodixie", station: 60011866, region: 10000032 },
+  { name: "Rens",    station: 60004588, region: 10000030 },
+];
+const hubCache = new Map();       // typeId -> { t, hubs: [{ buy, sell }] | null } – 5 Minuten
+const hubPending = new Set();
+let hubTimer = 0;
 const histCache = new Map();      // typeId -> Metrik (1 h)
 const nameCache = new Map();      // id -> Name (Typen, Stationen, Systeme, Strukturen)
 
@@ -1382,6 +1412,55 @@ async function trend(typeId) {
   }
   histCache.set(typeId, { t: Date.now(), m });
   return m;
+}
+
+// Live-Preise an den 4 Handelszentren (nur Orders direkt an der Station, wie im Price Checker)
+async function hubPrices(typeId) {
+  if (typeId === 44992) return null;                        // PLEX: nur im globalen PLEX-Markt
+  return Promise.all(HUBS.map(async (h) => {
+    const url = (p) => `${ESI}/markets/${h.region}/orders/?datasource=tranquility&order_type=all&type_id=${typeId}&page=${p}`;
+    const first = await esiGet(url(1));
+    let orders = await first.json();
+    const pages = Number(first.headers.get("X-Pages")) || 1;
+    for (let p = 2; p <= pages; p++) orders = orders.concat(await (await esiGet(url(p))).json());
+    orders = orders.filter((o) => o.location_id === h.station);
+    const buys = orders.filter((o) => o.is_buy_order).map((o) => o.price), sells = orders.filter((o) => !o.is_buy_order).map((o) => o.price);
+    return { buy: buys.length ? Math.max(...buys) : null, sell: sells.length ? Math.min(...sells) : null };
+  }));
+}
+
+// fehlende Hub-Preise für die angezeigten Typen nachladen; Tabelle wird gebündelt neu gezeichnet
+function ensureHubs(types) {
+  const fresh = (t) => { const c = hubCache.get(t); return c && Date.now() - c.t < 5 * 60000; };
+  const todo = [...new Set(types)].filter((t) => !hubPending.has(t) && !fresh(t));
+  if (!todo.length) return;
+  todo.forEach((t) => hubPending.add(t));
+  pool(todo, 3, async (t) => {
+    try { hubCache.set(t, { t: Date.now(), hubs: await hubPrices(t) }); }
+    catch (e) { hubCache.set(t, { t: Date.now(), hubs: undefined, error: String(e.message || e) }); }
+    finally { hubPending.delete(t); }
+  }, () => { clearTimeout(hubTimer); hubTimer = setTimeout(render, 300); });
+}
+
+const fmtHub = (n) => n == null ? "–" : n >= 1e6 ? fmtShort(n) : n.toLocaleString("de-DE", { minimumFractionDigits: n < 100 ? 2 : 0, maximumFractionDigits: n < 100 ? 2 : 0 });
+
+function hubCell(r, i, sc) {
+  const c = hubCache.get(r.type);
+  if (!c) return `<td class="hub hide-s${sc}"><span class="dim">…</span></td>`;
+  if (c.hubs === null) return i === 0 ? `<td class="hub plex hide-s${sc}" colspan="4"><span class="dim">nur im globalen PLEX-Markt</span></td>` : "";
+  if (!c.hubs) return `<td class="hub hide-s${sc}"><span class="dim" title="${esc(c.error || "")}">Fehler</span></td>`;
+  const h = c.hubs[i], best = Math.max(...c.hubs.map((x) => x.buy ?? -1));
+  return `<td class="hub hide-s${sc}" title="${HUBS[i].name}: höchstes Buy (Sofortverkauf) ${fmtHub(h.buy)} ISK · niedrigstes Sell ${fmtHub(h.sell)} ISK">
+        <span class="hb${h.buy != null && h.buy === best && best > 0 ? " best" : ""}">${fmtHub(h.buy)}</span><span class="hs">${fmtHub(h.sell)}</span></td>`;
+}
+
+function hubMobile(r) {
+  const c = hubCache.get(r.type);
+  if (!c) return `<td class="hubs-m"><span class="dim">Hub-Preise laden …</span></td>`;
+  if (c.hubs === null) return `<td class="hubs-m"><span class="dim">Hubs: nur im globalen PLEX-Markt</span></td>`;
+  if (!c.hubs) return `<td class="hubs-m"><span class="dim">Hub-Preise: Fehler</span></td>`;
+  const best = Math.max(...c.hubs.map((x) => x.buy ?? -1));
+  return `<td class="hubs-m">${c.hubs.map((h, i) => `<span class="${h.buy != null && h.buy === best && best > 0 ? "best" : ""}"><i>${HUBS[i].name}</i>${fmtHub(h.buy)}</span>`).join("")}</td>`;
 }
 
 function spark(vals, chg) {
@@ -1502,7 +1581,8 @@ function render() {
   const small = SCAN.rows.filter((r) => !big(r)).length;
   let rows = SCAN.rows.filter((r) => big(r) && (!q || r.name.toLowerCase().includes(q) || r.loc.toLowerCase().includes(q))
     && (!onlyUp || (r.chg != null && r.chg >= upMin)));
-  const val = (r) => sortKey === "name" || sortKey === "loc" ? r[sortKey].toLowerCase() : r[sortKey];
+  const val = (r) => sortKey === "name" || sortKey === "loc" ? r[sortKey].toLowerCase()
+    : /^h\d$/.test(sortKey) ? hubCache.get(r.type)?.hubs?.[Number(sortKey[1])]?.buy ?? null : r[sortKey];
   rows.sort((a, b) => {
     const x = val(a), y = val(b);
     if (x == null && y == null) return 0;
@@ -1525,14 +1605,17 @@ function render() {
       <td class="loc${sc("loc")}">${esc(r.loc)}${r.via.length ? `<span class="via">in ${esc(r.via.join(", "))}</span>` : ""}</td>
       <td class="qty${sc("qty")}">${fmt(r.qty)}<span class="unit"> Stk</span></td>
       <td class="hide-s${sc("price")}">${fmtPrice(r.price)}</td>
+      ${HUBS.map((_, i) => hubCell(r, i, sc(`h${i}`))).join("")}
       <td class="val${sc("value")}">${r.value == null ? "–" : `${fmtShort(r.value)} ISK`}</td>
       <td class="chg ${cls(r.chg)}${sc("chg")}">${r.error ? `<span class="dim" title="${esc(r.error)}">Fehler</span>` : r.price == null ? `<span class="v dim" title="in den letzten Tagen nicht in The Forge gehandelt">kein Handel</span>` : fmtPct(r.chg)}</td>
       <td class="hide-s ${cls(r.gain)}${sc("gain")}">${r.gain == null ? "–" : `${r.gain >= 0 ? "+" : "−"}${fmtShort(Math.abs(r.gain))} ISK`}</td>
-      <td class="hide-s">${spark(r.spark, r.chg)}</td>
-    </tr>`).join("") || `<tr><td colspan="8" class="dim" style="text-align:center;padding:18px">Keine Treffer${onlyUp ? " – Filter „nur Anstiege“ lockern?" : ""}</td></tr>`;
+      <td class="hide-s spark-col">${spark(r.spark, r.chg)}</td>
+      ${hubMobile(r)}
+    </tr>`).join("") || `<tr><td colspan="12" class="dim" style="text-align:center;padding:18px">Keine Treffer${onlyUp ? " – Filter „nur Anstiege“ lockern?" : ""}</td></tr>`;
   $("more").innerHTML = (rows.length > shown ? `<button class="btn-ghost" id="more-btn" type="button">${fmt(rows.length - shown)} WEITERE ANZEIGEN</button>` : "")
     + (small ? `<div class="small" style="margin-top:8px">${fmt(small)} Stapel unter dem Mindestwert von ${fmtShort(minVal)} ISK ausgeblendet</div>` : "");
   $("more-btn")?.addEventListener("click", () => { shown += PAGE; render(); });
+  ensureHubs(rows.slice(0, shown).map((r) => r.type));
 
   const all = SCAN.rows.filter((r) => r.value != null);
   const sumV = all.reduce((a, r) => a + r.value, 0), sumG = all.reduce((a, r) => a + (r.gain || 0), 0);
@@ -1560,7 +1643,7 @@ function gate() {
 }
 
 $("gate-login").addEventListener("click", () => EveSSO.login());
-$("rescan").addEventListener("click", () => { histCache.clear(); scan(true); });
+$("rescan").addEventListener("click", () => { histCache.clear(); hubCache.clear(); scan(true); });
 $("minval").value = String(store.get("minval", "1e7"));
 $("minval").addEventListener("change", () => { store.set("minval", $("minval").value); scan(); });
 $("onlyup").checked = !!store.get("onlyup", false);
