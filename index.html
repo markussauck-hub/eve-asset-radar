@@ -1273,6 +1273,7 @@ const EveSSO = (() => {
 
 // ---------------------------------------------------------------- Asset Radar
 const FORGE = 10000002;
+const PLEX_REGION = 19000001;     // PLEX wird seit 2023 nur noch im globalen PLEX-Markt gehandelt
 const ASSET_SCOPE = "esi-assets.read_assets.v1";
 const STRUCT_SCOPE = "esi-universe.read_structures.v1";
 const MAX_TYPES = 400;            // höchstens so viele Item-Typen mit History prüfen (Ladezeit)
@@ -1357,7 +1358,7 @@ async function structureName(id) {
 async function trend(typeId) {
   const hit = histCache.get(typeId);
   if (hit && Date.now() - hit.t < 3600000) return hit.m;
-  const rows = await (await esiGet(`${ESI}/markets/${FORGE}/history/?datasource=tranquility&type_id=${typeId}`)).json();
+  const rows = await (await esiGet(`${ESI}/markets/${typeId === 44992 ? PLEX_REGION : FORGE}/history/?datasource=tranquility&type_id=${typeId}`)).json();
   const m = { now: null, base: null, chg: null, spark: [], lastDate: null };
   if (rows.length) {
     const last = rows[rows.length - 1], lastT = Date.parse(last.date);
