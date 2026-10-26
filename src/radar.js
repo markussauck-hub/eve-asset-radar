@@ -21,7 +21,12 @@ const hubCache = new Map();       // typeId -> { t, hubs: [{ buy, sell }] | null
 const hubPending = new Set();
 let hubTimer = 0;
 const histCache = new Map();      // typeId -> Metrik (1 h)
-const nameCache = new Map();      // id -> Name (Typen, Stationen, Systeme, Strukturen)
+const nameCache = new Map();
+const sysOf = new Map();          // Station/Struktur -> Sonnensystem-ID
+const sysInfo = new Map();        // System-ID -> { name, sec }
+const typeVol = new Map();        // Typ-ID -> { vol, pkg } in m³ (für das Transportvolumen)
+let groupBy = store.get("group", "none");            // none | station | system
+const openGroups = new Set();      // id -> Name (Typen, Stationen, Systeme, Strukturen)
 
 const fmtShort = (n) => {
   const u = [[1e12, "Bio"], [1e9, "Mrd"], [1e6, "Mio"], [1e3, "Tsd"]].find(([v]) => Math.abs(n) >= v);
@@ -85,11 +90,40 @@ async function resolveNames(ids) {
 async function structureName(id) {
   if (nameCache.has(id)) return nameCache.get(id);
   let name;
-  try { name = (await (await esiAuth(`${ESI}/universe/structures/${id}/?datasource=tranquility`)).json()).name; }
+  try {
+    const st = await (await esiAuth(`${ESI}/universe/structures/${id}/?datasource=tranquility`)).json();
+    name = st.name; if (st.solar_system_id) sysOf.set(id, st.solar_system_id);
+  }
   catch { name = `Struktur #${id} (Name nicht freigegeben)`; }
   nameCache.set(id, name);
   return name;
 }
+
+// Sonnensystem je Ort (NPC-Station: /universe/stations, Struktur: siehe structureName) und System-Infos (Name, Sicherheit)
+async function resolveSystems(locs) {
+  await pool(locs.filter((l) => isStation(l) && !sysOf.has(l)), PAR, async (l) => {
+    try { sysOf.set(l, (await (await esiGet(`${ESI}/universe/stations/${l}/?datasource=tranquility`)).json()).system_id); } catch { /* ohne System */ }
+  });
+  locs.filter(isSystem).forEach((l) => sysOf.set(l, l));
+  const sys = [...new Set(locs.map((l) => sysOf.get(l)).filter((x) => x && !sysInfo.has(x)))];
+  await pool(sys, PAR, async (id) => {
+    try { const s = await (await esiGet(`${ESI}/universe/systems/${id}/?datasource=tranquility`)).json(); sysInfo.set(id, { name: s.name, sec: s.security_status }); }
+    catch { sysInfo.set(id, { name: nameCache.get(id) || `System #${id}`, sec: null }); }
+  });
+}
+
+// Volumen je Typ in m³: gepackt (packaged_volume), sonst volume
+async function resolveVolumes(types) {
+  await pool(types.filter((t) => !typeVol.has(t)), PAR, async (t) => {
+    try { const d = await (await esiGet(`${ESI}/universe/types/${t}/?datasource=tranquility`)).json(); typeVol.set(t, { vol: d.volume ?? 0, pkg: d.packaged_volume ?? d.volume ?? 0 }); }
+    catch { /* Volumen unbekannt */ }
+  });
+}
+const fmtM3 = (n) => n >= 1e6 ? `${fmtShort(n)} m³` : `${n.toLocaleString("de-DE", { maximumFractionDigits: n < 10 ? 2 : 0 })} m³`;
+
+// Sicherheitsstatus wie im Spiel: auf eine Nachkommastelle, Farbe von Highsec (blau/grün) bis Nullsec (rot)
+const secTxt = (s) => s == null ? "" : (s > 0 && s < 0.05 ? 0.1 : Math.round(s * 10) / 10).toFixed(1);
+const secCol = (s) => s == null ? "var(--muted)" : s >= 0.85 ? "#2fefef" : s >= 0.65 ? "#3cdc8a" : s >= 0.45 ? "#8fe03a" : s > 0 ? "#f0a030" : "#f04a4a";
 
 // Preis-Trend aus der Jita-History
 async function trend(typeId) {
@@ -224,6 +258,8 @@ async function scan(force = false) {
       if (EveSSO.hasScope(STRUCT_SCOPE)) await pool(structs, PAR, structureName);
       else structs.forEach((id) => nameCache.set(id, `Struktur #${id}`));
     }
+    setStatus("Ermittle Systeme und Volumen …", "busy");
+    await Promise.all([resolveSystems([...new Set(pos.map((g) => g.loc))]), resolveVolumes(types)]);
     if (token !== scanToken) return;
 
     // 5) Preistrend je Typ
@@ -242,7 +278,9 @@ async function scan(force = false) {
         : isSystem(g.loc) ? `${nameCache.get(g.loc) || g.loc} (im All)`
         : nameCache.get(g.loc) || (g.loc > 1e12 ? `Struktur #${g.loc}` : `#${g.loc}`);
       return {
-        type: g.type, name: nameCache.get(g.type) || `#${g.type}`, loc: locName,
+        type: g.type, name: nameCache.get(g.type) || `#${g.type}`, loc: locName, locId: g.loc,
+        sysId: sysOf.get(g.loc) ?? null,
+        m3: typeVol.has(g.type) ? g.qty * typeVol.get(g.type).pkg : null,   // gepackt – zusammengebaute Schiffe vor dem Transport umpacken
         via: [...g.via].map((t) => nameCache.get(t) || `#${t}`), assembled: g.assembled, qty: g.qty,
         price, value: price != null ? price * g.qty : null, chg: m.chg ?? null,
         est: g.qty * (prices.get(g.type) || 0),           // Grobwert (ESI-Durchschnitt), falls kein Jita-Preis
@@ -296,7 +334,7 @@ function render() {
 
   const cls = (v) => v == null ? "dim" : v >= 0 ? "pos" : "neg";
   const sc = (k) => k === sortKey ? " sorted" : "";      // Sortierspalte hervorheben
-  $("rows").innerHTML = rows.slice(0, shown).map((r) => `
+  const rowHtml = (r) => `
     <tr>
       <td class="it${sc("name")}"><a href="${PC_URL}#${r.type}" title="Hub-Preise im Price Checker"><img src="https://images.evetech.net/types/${r.type}/icon?size=32" alt="" loading="lazy" onerror="this.style.visibility='hidden'">${esc(r.name)}</a>${r.assembled ? `<span class="tag" title="zusammengebaut – vor dem Verkauf umpacken">ASSEMBLED</span>` : ""}</td>
       <td class="loc${sc("loc")}">${esc(r.loc)}${r.via.length ? `<span class="via">in ${esc(r.via.join(", "))}</span>` : ""}</td>
@@ -308,11 +346,59 @@ function render() {
       <td class="hide-s ${cls(r.gain)}${sc("gain")}">${r.gain == null ? "–" : `${r.gain >= 0 ? "+" : "−"}${fmtShort(Math.abs(r.gain))} ISK`}</td>
       <td class="hide-s spark-col">${spark(r.spark, r.chg)}</td>
       ${hubMobile(r)}
-    </tr>`).join("") || `<tr><td colspan="12" class="dim" style="text-align:center;padding:18px">Keine Treffer${onlyUp ? " – Filter „nur Anstiege“ lockern?" : ""}</td></tr>`;
-  $("more").innerHTML = (rows.length > shown ? `<button class="btn-ghost" id="more-btn" type="button">${fmt(rows.length - shown)} WEITERE ANZEIGEN</button>` : "")
+    </tr>`;
+  const empty = `<tr><td colspan="12" class="dim" style="text-align:center;padding:18px">Keine Treffer${onlyUp ? " – Filter „nur Anstiege“ lockern?" : ""}</td></tr>`;
+  let visible;
+  $("grp-toggle").hidden = groupBy === "none";
+  if (groupBy === "none") {
+    visible = rows.slice(0, shown);
+    $("rows").innerHTML = visible.map(rowHtml).join("") || empty;
+  } else {
+    // Gruppen nach Station oder System; Reihenfolge nach Gesamtwert (bei Sortierung nach Ort: alphabetisch)
+    const groups = new Map();
+    for (const r of rows) {
+      const key = groupBy === "system" ? `s${r.sysId ?? "?"}` : `l${r.locId}`;
+      const g = groups.get(key) || { key, rows: [], v: 0, gain: 0, m3: 0, m3miss: 0, locs: new Set(), sysId: r.sysId };
+      g.rows.push(r); g.v += r.value ?? 0; g.gain += r.gain ?? 0; g.locs.add(r.locId);
+      if (r.m3 == null) g.m3miss++; else g.m3 += r.m3;
+      groups.set(key, g);
+    }
+    const label = (g) => {
+      const si = sysInfo.get(g.sysId);
+      const sec = si?.sec != null ? `<span class="sec" style="color:${secCol(si.sec)}">${secTxt(si.sec)}</span>` : "";
+      if (groupBy === "system") return `${sec}<b>${esc(si?.name || "unbekanntes System")}</b><span class="gmeta">${fmt(g.locs.size)} ${g.locs.size === 1 ? "Ort" : "Orte"}</span>`;
+      return `${sec}<b>${esc(g.rows[0].loc)}</b>`;
+    };
+    const name = (g) => (groupBy === "system" ? sysInfo.get(g.sysId)?.name : g.rows[0].loc) || "";
+    const list = [...groups.values()].sort((a, b) => sortKey === "loc" ? name(a).localeCompare(name(b), "de") * sortDir : b.v - a.v);
+    const auto = !!q;                                   // bei Suche alle Gruppen aufklappen
+    visible = [];
+    $("rows").innerHTML = list.map((g) => {
+      const open = auto || openGroups.has(g.key);
+      if (open) visible.push(...g.rows);
+      return `<tr class="grp${open ? " open" : ""}" data-g="${g.key}"><td colspan="12"><div class="gwrap">
+          <span class="caret">${open ? "▾" : "▸"}</span><span class="glabel">${label(g)}</span>
+          <span class="gmeta">${fmt(g.rows.length)} ${g.rows.length === 1 ? "Position" : "Positionen"}</span>
+          <span class="gvol" title="Transportvolumen der angezeigten Positionen, gepackt gerechnet (zusammengebaute Schiffe/Container vorher umpacken)${g.m3miss ? ` · bei ${g.m3miss} Position(en) unbekannt` : ""}">📦 ${fmtM3(g.m3)}${g.m3miss ? "+" : ""}</span>
+          <span class="gsum">${fmtShort(g.v)} ISK <span class="${cls(g.gain)}">${g.gain >= 0 ? "+" : "−"}${fmtShort(Math.abs(g.gain))}</span></span>
+        </div></td></tr>` + (open ? g.rows.map(rowHtml).join("") : "");
+    }).join("") || empty;
+    $("rows").querySelectorAll("tr.grp").forEach((tr) => tr.addEventListener("click", () => {
+      const k = tr.dataset.g;
+      openGroups.has(k) ? openGroups.delete(k) : openGroups.add(k);
+      render();
+    }));
+    $("grp-toggle").textContent = list.length && list.every((g) => openGroups.has(g.key)) ? "ALLE ZUKLAPPEN" : "ALLE AUFKLAPPEN";
+    $("grp-toggle").onclick = () => {
+      const allOpen = list.every((g) => openGroups.has(g.key));
+      list.forEach((g) => allOpen ? openGroups.delete(g.key) : openGroups.add(g.key));
+      render();
+    };
+  }
+  $("more").innerHTML = (groupBy === "none" && rows.length > shown ? `<button class="btn-ghost" id="more-btn" type="button">${fmt(rows.length - shown)} WEITERE ANZEIGEN</button>` : "")
     + (small ? `<div class="small" style="margin-top:8px">${fmt(small)} Stapel unter dem Mindestwert von ${fmtShort(minVal)} ISK ausgeblendet</div>` : "");
   $("more-btn")?.addEventListener("click", () => { shown += PAGE; render(); });
-  ensureHubs(rows.slice(0, shown).map((r) => r.type));
+  ensureHubs(visible.map((r) => r.type));
 
   // Kacheln rechnen mit dem, was die Tabelle zeigt (Suche, Mindestwert, „nur Anstiege“); bei aktivem Filter mit Gesamtwert
   const sums = (rs) => rs.reduce((a, r) => ({ v: a.v + (r.value ?? 0), g: a.g + (r.gain ?? 0) }), { v: 0, g: 0 });
@@ -352,6 +438,8 @@ $("upmin").value = store.get("upmin", 10);
 $("onlyup").addEventListener("change", () => { store.set("onlyup", $("onlyup").checked); render(); });
 $("upmin").addEventListener("input", () => { store.set("upmin", Number($("upmin").value)); if ($("onlyup").checked) render(); });
 $("q").addEventListener("input", () => { shown = PAGE; render(); });
+$("group").value = groupBy;
+$("group").addEventListener("change", () => { groupBy = $("group").value; store.set("group", groupBy); openGroups.clear(); render(); });
 document.querySelectorAll("#rt th[data-k]").forEach((th) => th.addEventListener("click", () => {
   const k = th.dataset.k;
   if (k === sortKey) sortDir = -sortDir; else { sortKey = k; sortDir = k === "name" || k === "loc" ? 1 : -1; }
